@@ -3,13 +3,15 @@
   import { selectedSubjects, schedule } from "../stores";
   import type { Subject, ScheduleEvent } from "../types";
 
-  let gapi: any;
+  let tokenClient: any;
+  let gapiInited = false;
+  let gsiInited = false;
   let isSignedIn = false;
   let selectedSubjectsValue: Set<string>;
   let scheduleValue: Subject[];
 
-  const CLIENT_ID = import.meta.env.CLIENT_ID;
-  const API_KEY = import.meta.env.API_KEY;
+  const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
   const DISCOVERY_DOC =
     "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
   const SCOPES = "https://www.googleapis.com/auth/calendar";
@@ -18,37 +20,90 @@
   schedule.subscribe((value) => (scheduleValue = value));
 
   onMount(async () => {
-    const script = document.createElement("script");
-    script.src = "https://apis.google.com/js/api.js";
-    document.body.appendChild(script);
+    // Load both libraries
+    const [gapiScript, gisScript] = await Promise.all([
+      loadScript("https://apis.google.com/js/api.js"),
+      loadScript("https://accounts.google.com/gsi/client"),
+    ]);
 
-    script.onload = () => {
-      gapi = window.gapi;
-      gapi.load("client:auth2", initializeGapiClient);
-    };
+    if (gapiScript && gisScript) {
+      await initializeGapiClient();
+      initializeGsiClient();
+    }
   });
 
-  async function initializeGapiClient() {
-    await gapi.client.init({
-      apiKey: API_KEY,
-      clientId: CLIENT_ID,
-      discoveryDocs: [DISCOVERY_DOC],
-      scope: SCOPES,
+  function loadScript(src: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const script = document.createElement("script");
+      script.src = src;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
     });
-
-    gapi.auth2.getAuthInstance().isSignedIn.listen(updateSigninStatus);
-    updateSigninStatus(gapi.auth2.getAuthInstance().isSignedIn.get());
   }
 
-  function updateSigninStatus(signedIn: boolean) {
-    isSignedIn = signedIn;
+  async function initializeGapiClient() {
+    try {
+      await new Promise((resolve, reject) => {
+        (window as any).gapi.load("client", {
+          callback: resolve,
+          onerror: reject,
+        });
+      });
+
+      await (window as any).gapi.client.init({
+        apiKey: API_KEY,
+        discoveryDocs: [DISCOVERY_DOC],
+      });
+
+      gapiInited = true;
+    } catch (error) {
+      console.error("Error initializing GAPI client:", error);
+    }
   }
 
-  function handleAuthClick() {
-    if (!isSignedIn) {
-      gapi.auth2.getAuthInstance().signIn();
-    } else {
-      gapi.auth2.getAuthInstance().signOut();
+  function initializeGsiClient() {
+    try {
+      tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: handleTokenResponse,
+      });
+      gsiInited = true;
+    } catch (error) {
+      console.error("Error initializing GSI client:", error);
+    }
+  }
+
+  function handleTokenResponse(response: any) {
+    if (response.access_token) {
+      isSignedIn = true;
+    }
+  }
+
+  async function handleAuthClick() {
+    if (!gapiInited || !gsiInited) {
+      console.error("Google API not initialized");
+      return;
+    }
+
+    try {
+      if (!isSignedIn) {
+        // Request an access token
+        tokenClient.requestAccessToken();
+      } else {
+        // Revoke the access token
+        const token = (window as any).gapi.client.getToken();
+        if (token) {
+          (window as any).google.accounts.oauth2.revoke(token.access_token);
+          (window as any).gapi.client.setToken(null);
+          isSignedIn = false;
+        }
+      }
+    } catch (error) {
+      console.error("Error during authentication:", error);
     }
   }
 
@@ -113,7 +168,7 @@
     for (const subject of selectedSchedule) {
       const event = createCalendarEvent(subject);
       try {
-        await gapi.client.calendar.events.insert({
+        await (window as any).gapi.client.calendar.events.insert({
           calendarId: "primary",
           resource: event,
         });
@@ -125,14 +180,18 @@
 </script>
 
 <div class="calendar-integration">
-  <button class="auth-button" on:click={handleAuthClick}>
-    {isSignedIn ? "Sign Out" : "Sign In with Google"}
-  </button>
-
-  {#if isSignedIn && selectedSubjectsValue.size > 0}
-    <button class="add-button" on:click={addToCalendar}>
-      Add Selected Subjects to Calendar
+  {#if !gapiInited || !gsiInited}
+    <div class="loading">Initializing Google Calendar...</div>
+  {:else}
+    <button class="auth-button" on:click={handleAuthClick}>
+      {isSignedIn ? "Sign Out" : "Sign In with Google"}
     </button>
+
+    {#if isSignedIn && selectedSubjectsValue.size > 0}
+      <button class="add-button" on:click={addToCalendar}>
+        Add Selected Subjects to Calendar
+      </button>
+    {/if}
   {/if}
 </div>
 
@@ -141,6 +200,11 @@
     margin: 2rem 0;
     display: flex;
     gap: 1rem;
+  }
+
+  .loading {
+    color: #666;
+    font-style: italic;
   }
 
   button {
