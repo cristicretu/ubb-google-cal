@@ -1,6 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { selectedSubjects, schedule, selectedSemigroup } from "../stores";
+  import {
+    selectedSubjects,
+    schedule,
+    selectedSemigroup,
+    selectedGroup,
+  } from "../stores";
   import type { Subject, ScheduleEvent } from "../types";
 
   let tokenClient: any;
@@ -10,6 +15,7 @@
   let selectedSubjectsValue: Set<string>;
   let scheduleValue: Subject[];
   let selectedSemigroupValue: "1" | "2" | null;
+  let selectedGroupValue: string;
   let isAddingEvents = false;
 
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -21,6 +27,7 @@
   selectedSubjects.subscribe((value) => (selectedSubjectsValue = value));
   schedule.subscribe((value) => (scheduleValue = value));
   selectedSemigroup.subscribe((value) => (selectedSemigroupValue = value));
+  selectedGroup.subscribe((value) => (selectedGroupValue = value));
 
   onMount(async () => {
     // Load both libraries
@@ -111,6 +118,14 @@
   }
 
   function isSubjectForSelectedSemigroup(subject: Subject): boolean {
+    // First check if this subject belongs to our group
+    if (
+      !subject.group.startsWith(selectedGroupValue) &&
+      !subject.group.startsWith("IE2")
+    ) {
+      return false;
+    }
+
     // If no semigroup is selected, only return subjects without a specific semigroup
     if (!selectedSemigroupValue) {
       return !subject.group.includes("/");
@@ -120,7 +135,14 @@
     // 1. Don't have a specific semigroup (e.g., "923" or "IE2")
     // 2. Match the selected semigroup (e.g., "923/1" for semigroup "1")
     const groupParts = subject.group.split("/");
-    return groupParts.length === 1 || groupParts[1] === selectedSemigroupValue;
+
+    // Common classes (like "IE2" or "923") are always included
+    if (groupParts.length === 1) {
+      return true;
+    }
+
+    // For subgroups (like "923/1"), strictly match the semigroup
+    return groupParts[1] === selectedSemigroupValue;
   }
 
   function createCalendarEvent(subject: Subject): ScheduleEvent {
@@ -189,6 +211,27 @@
     try {
       isAddingEvents = true;
 
+      // First, get existing events to prevent duplicates
+      const existingEvents = await (
+        window as any
+      ).gapi.client.calendar.events.list({
+        calendarId: "primary",
+        timeMin: new Date().toISOString(),
+        timeMax: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        singleEvents: false,
+      });
+
+      const existingEventKeys = new Set(
+        existingEvents.result.items
+          ?.filter((event) => event.description?.startsWith("Professor:"))
+          .map((event) => {
+            const summary = event.summary;
+            const time = event.start.dateTime.split("T")[1].substring(0, 5);
+            const day = new Date(event.start.dateTime).getDay();
+            return `${summary}-${day}-${time}`;
+          }) || []
+      );
+
       // Filter subjects based on both name and semigroup
       const selectedSchedule = scheduleValue.filter(
         (subject) =>
@@ -203,12 +246,23 @@
 
       let successCount = 0;
       let errorCount = 0;
+      let skippedCount = 0;
 
       for (const subject of selectedSchedule) {
         try {
           const event = createCalendarEvent(subject);
-          console.log("Adding event:", event); // Debug log
 
+          // Create a unique key for this event
+          const eventKey = `${event.summary}-${getNextDayOccurrence(subject.day).getDay()}-${subject.time.split("-")[0]}`;
+
+          // Skip if this event already exists
+          if (existingEventKeys.has(eventKey)) {
+            console.log("Skipping duplicate event:", event);
+            skippedCount++;
+            continue;
+          }
+
+          console.log("Adding event:", event);
           const response = await (
             window as any
           ).gapi.client.calendar.events.insert({
@@ -218,6 +272,7 @@
 
           if (response.status === 200) {
             successCount++;
+            existingEventKeys.add(eventKey); // Add to tracking set
           } else {
             errorCount++;
             console.error("Error response:", response);
@@ -230,9 +285,11 @@
 
       // Show result to user
       alert(
-        `Added ${successCount} events to calendar${
-          errorCount > 0 ? `. Failed to add ${errorCount} events.` : ""
-        }`
+        `Added ${successCount} events to calendar` +
+          (skippedCount > 0
+            ? `\nSkipped ${skippedCount} existing events`
+            : "") +
+          (errorCount > 0 ? `\nFailed to add ${errorCount} events` : "")
       );
     } finally {
       isAddingEvents = false;
