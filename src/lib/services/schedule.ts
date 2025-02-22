@@ -32,15 +32,19 @@ async function fetchWithRetry(
   throw new Error("Max retries reached");
 }
 
-export async function fetchSchedule(year: string): Promise<Subject[]> {
-  const cacheKey = `schedule-${year}`;
+export async function fetchSchedule(timetableCode: string): Promise<Subject[]> {
+  if (!timetableCode || typeof timetableCode !== "string") {
+    throw new Error("Invalid timetable code");
+  }
+
+  const cacheKey = `schedule-${timetableCode}`;
   if (cache.has(cacheKey)) {
     return cache.get(cacheKey);
   }
 
   try {
     const response = await fetchWithRetry(
-      `${CORS_PROXY}${BASE_URL}/${year}.html`
+      `${CORS_PROXY}${BASE_URL}/${timetableCode}.html`
     );
     const html = await response.text();
     const subjects = parseScheduleHtml(html);
@@ -52,32 +56,28 @@ export async function fetchSchedule(year: string): Promise<Subject[]> {
   }
 }
 
-export async function fetchGroups(targetYear?: string): Promise<Group[]> {
-  // If a specific year is provided, only fetch that one
-  const years = targetYear ? [targetYear] : ["IE1", "IE2", "IE3"];
-  const groups: Group[] = [];
-
-  for (const year of years) {
-    const cacheKey = `groups-${year}`;
-    if (cache.has(cacheKey)) {
-      groups.push(...cache.get(cacheKey));
-      continue;
-    }
-
-    try {
-      const response = await fetchWithRetry(
-        `${CORS_PROXY}${BASE_URL}/${year}.html`
-      );
-      const html = await response.text();
-      const yearGroups = parseGroupsFromHtml(html, year);
-      cache.set(cacheKey, yearGroups);
-      groups.push(...yearGroups);
-    } catch (error) {
-      console.error(`Error fetching groups for ${year}:`, error);
-    }
+export async function fetchGroups(timetableCode: string): Promise<Group[]> {
+  if (!timetableCode || typeof timetableCode !== "string") {
+    throw new Error("Invalid timetable code");
   }
 
-  return groups;
+  const cacheKey = `groups-${timetableCode}`;
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
+  }
+
+  try {
+    const response = await fetchWithRetry(
+      `${CORS_PROXY}${BASE_URL}/${timetableCode}.html`
+    );
+    const html = await response.text();
+    const groups = parseGroupsFromHtml(html, timetableCode);
+    cache.set(cacheKey, groups);
+    return groups;
+  } catch (error) {
+    console.error(`Error fetching groups for ${timetableCode}:`, error);
+    return [];
+  }
 }
 
 function parseScheduleHtml(html: string): Subject[] {
@@ -111,24 +111,9 @@ function parseScheduleHtml(html: string): Subject[] {
   return subjects;
 }
 
-function parseGroupsFromHtml(html: string, year: string): Group[] {
+function parseGroupsFromHtml(html: string, timetableCode: string): Group[] {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
-
-  // First try to get the group from the title
-  const title = doc.querySelector("h1")?.textContent || "";
-  const groupMatch = title.match(/Grupa (\d{3})/);
-  if (groupMatch) {
-    return [
-      {
-        id: groupMatch[1],
-        name: `Grupa ${groupMatch[1]}`,
-        year,
-      },
-    ];
-  }
-
-  // Fallback to parsing the table
   const rows = doc.querySelectorAll("tr");
   const groupSet = new Set<string>();
 
@@ -138,9 +123,10 @@ function parseGroupsFromHtml(html: string, year: string): Group[] {
     const cells = row.querySelectorAll("td");
     if (cells.length >= 5) {
       const groupCell = cells[4].textContent?.trim() || "";
-      if (groupCell && !groupCell.startsWith("IE")) {
+      // Accept any group format that's not the timetable code itself
+      if (groupCell && groupCell !== timetableCode) {
         const baseGroup = groupCell.split("/")[0];
-        if (baseGroup && /^\d{3}$/.test(baseGroup)) {
+        if (baseGroup && baseGroup.length > 0) {
           groupSet.add(baseGroup);
         }
       }
@@ -148,10 +134,10 @@ function parseGroupsFromHtml(html: string, year: string): Group[] {
   });
 
   return Array.from(groupSet)
-    .sort((a, b) => parseInt(a) - parseInt(b))
+    .sort()
     .map((id) => ({
       id,
       name: `Grupa ${id}`,
-      year,
+      year: timetableCode,
     }));
 }

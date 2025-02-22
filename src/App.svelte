@@ -3,39 +3,55 @@
   import SubjectSelector from "./lib/components/SubjectSelector.svelte";
   import GoogleCalendar from "./lib/components/GoogleCalendar.svelte";
   import { selectedGroup, schedule, groups } from "./lib/stores";
-  import { fetchGroups } from "./lib/services/schedule";
+  import { fetchGroups, fetchSchedule } from "./lib/services/schedule";
+  import { onMount } from "svelte";
 
   let loading = true;
   let error: string | null = null;
 
-  // Get the target year from URL parameters
-  const urlParams = new URLSearchParams(window.location.search);
-  const targetYear = urlParams.get("year")?.toUpperCase();
-
-  // Initialize groups based on URL parameter
-  async function initializeGroups() {
+  onMount(async () => {
     try {
-      const fetchedGroups = await fetchGroups(targetYear || undefined);
-      if (fetchedGroups.length === 0) {
-        error = targetYear
-          ? `No schedule found for year ${targetYear}`
-          : "No schedules found";
+      // Get the timetable code from URL parameters
+      const urlParams = new URLSearchParams(window.location.search);
+      const timetableCode = urlParams.get("timetable");
+
+      if (!timetableCode) {
+        error =
+          "Please provide a timetable code in the URL (e.g., ?timetable=IE2)";
+        return;
       }
+
+      const code = timetableCode.toUpperCase();
+
+      // Initialize schedule and groups
+      const [fetchedGroups, fetchedSchedule] = await Promise.all([
+        fetchGroups(code),
+        fetchSchedule(code),
+      ]);
+
+      if (fetchedGroups.length === 0 || fetchedSchedule.length === 0) {
+        error = `No schedule found for ${code}`;
+        return;
+      }
+
+      // Initialize stores
       groups.set(fetchedGroups);
+      schedule.set(fetchedSchedule);
 
       // If there's only one group, select it automatically
       if (fetchedGroups.length === 1) {
         selectedGroup.set(fetchedGroups[0].id);
       }
     } catch (e) {
-      error = "Failed to load schedule. Please try again later.";
       console.error(e);
+      error =
+        e instanceof Error
+          ? e.message
+          : "Failed to load schedule. Please try again later.";
     } finally {
       loading = false;
     }
-  }
-
-  initializeGroups();
+  });
 </script>
 
 <main>

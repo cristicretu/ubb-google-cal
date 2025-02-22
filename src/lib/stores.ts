@@ -1,11 +1,23 @@
-import { writable, get } from "svelte/store";
+import { writable } from "svelte/store";
 import type { Subject, Group } from "./types";
 import { fetchGroups, fetchSchedule } from "./services/schedule";
 
-export const selectedGroup = writable<string>("");
-export const selectedSubjects = writable<Set<string>>(new Set());
+// Initialize stores with empty arrays
 export const schedule = writable<Subject[]>([]);
 export const groups = writable<Group[]>([]);
+export const selectedGroup = writable<string>("");
+export const selectedSubjects = writable<Set<string>>(new Set());
+
+// Helper function to get current store value
+export function getStoreValue<T>(store: {
+  subscribe: (callback: (value: T) => void) => void;
+}): T {
+  let value: T;
+  store.subscribe(($value) => {
+    value = $value;
+  })();
+  return value!;
+}
 
 // Initialize groups
 fetchGroups().then((fetchedGroups) => {
