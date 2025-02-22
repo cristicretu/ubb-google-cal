@@ -1,4 +1,9 @@
+
+https://github.com/user-attachments/assets/051643bb-2bfb-447c-a6bd-28f5a7d949d3
+
+<hr></hr>
 # UBB Schedule Manager
+
 
 A Svelte application that helps UBB students manage their class schedule by integrating with Google Calendar.
 
@@ -42,8 +47,7 @@ pnpm install
    - Open `src/lib/components/GoogleCalendar.svelte`
    - Replace the empty CLIENT_ID and API_KEY constants with your credentials:
    ```typescript
-   const CLIENT_ID = 'your-client-id.apps.googleusercontent.com';
-   const API_KEY = 'your-api-key';
+   const VITE_GOOGLE_CLIENT_ID = 'your-client-id.apps.googleusercontent.com';
    ```
 
 5. Start the development server:
