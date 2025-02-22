@@ -7,6 +7,7 @@ export const schedule = writable<Subject[]>([]);
 export const groups = writable<Group[]>([]);
 export const selectedGroup = writable<string>("");
 export const selectedSubjects = writable<Set<string>>(new Set());
+export const selectedSemigroup = writable<"1" | "2" | null>(null);
 
 // Helper function to get current store value
 export function getStoreValue<T>(store: {
