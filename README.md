@@ -2,7 +2,10 @@
 https://github.com/user-attachments/assets/051643bb-2bfb-447c-a6bd-28f5a7d949d3
 
 <hr></hr>
-# UBB Schedule Manager
+
+###  Visit [ubb-schedule.vercel.app/?timetable=IE2](https://ubb-schedule.vercel.app/?timetable=IE2) and replace the query param with whatever class you're in (MI1, IA1, etc.)
+
+## UBB Schedule Manager
 
 
 A Svelte application that helps UBB students manage their class schedule by integrating with Google Calendar.
