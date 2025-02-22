@@ -108,29 +108,38 @@
   }
 
   function createCalendarEvent(subject: Subject): ScheduleEvent {
+    // Parse hours correctly (assuming format like "8-10" or "14-16")
     const [startHour, endHour] = subject.time.split("-");
-    const now = new Date();
     const nextOccurrence = getNextDayOccurrence(subject.day);
+    const dateStr = nextOccurrence.toISOString().split("T")[0];
+
+    // Ensure hours are properly padded with leading zeros
+    const formattedStartHour = startHour.padStart(2, "0");
+    const formattedEndHour = endHour.padStart(2, "0");
 
     const event: ScheduleEvent = {
       summary: `${subject.name} (${subject.type})`,
       location: subject.room,
       description: `Professor: ${subject.professor}\nGroup: ${subject.group}`,
       start: {
-        dateTime: `${nextOccurrence.toISOString().split("T")[0]}T${startHour}:00`,
+        dateTime: `${dateStr}T${formattedStartHour}:00:00`,
         timeZone: "Europe/Bucharest",
       },
       end: {
-        dateTime: `${nextOccurrence.toISOString().split("T")[0]}T${endHour}:00`,
+        dateTime: `${dateStr}T${formattedEndHour}:00:00`,
         timeZone: "Europe/Bucharest",
       },
     };
 
+    // Handle bi-weekly recurrence
     if (subject.frequency) {
+      const interval = subject.frequency === "sapt. 1" ? 2 : 2;
+      const weekStart = subject.frequency === "sapt. 1" ? "" : ";WKST=MO";
       event.recurrence = [
-        `RRULE:FREQ=WEEKLY;COUNT=14${subject.frequency === "sapt. 1" ? ";INTERVAL=2" : ";INTERVAL=2;BYDAY=2"}`,
+        `RRULE:FREQ=WEEKLY;COUNT=14;INTERVAL=${interval}${weekStart}`,
       ];
     } else {
+      // Regular weekly recurrence
       event.recurrence = ["RRULE:FREQ=WEEKLY;COUNT=14"];
     }
 
@@ -165,17 +174,37 @@
       selectedSubjectsValue.has(subject.name)
     );
 
+    let successCount = 0;
+    let errorCount = 0;
+
     for (const subject of selectedSchedule) {
-      const event = createCalendarEvent(subject);
       try {
-        await (window as any).gapi.client.calendar.events.insert({
+        const event = createCalendarEvent(subject);
+        console.log("Adding event:", event); // Debug log
+
+        const response = await (
+          window as any
+        ).gapi.client.calendar.events.insert({
           calendarId: "primary",
           resource: event,
         });
+
+        if (response.status === 200) {
+          successCount++;
+        } else {
+          errorCount++;
+          console.error("Error response:", response);
+        }
       } catch (err) {
+        errorCount++;
         console.error("Error adding event to calendar:", err);
       }
     }
+
+    // Show result to user
+    alert(
+      `Added ${successCount} events to calendar${errorCount > 0 ? `. Failed to add ${errorCount} events.` : ""}`
+    );
   }
 </script>
 
