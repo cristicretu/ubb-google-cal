@@ -9,7 +9,6 @@
   import type { Subject, ScheduleEvent } from "../types";
 
   let tokenClient: any;
-  let gapiInited = false;
   let gsiInited = false;
   let isSignedIn = false;
   let selectedSubjectsValue: Set<string>;
@@ -17,12 +16,16 @@
   let selectedSemigroupValue: "1" | "2" | null;
   let selectedGroupValue: string;
   let isAddingEvents = false;
+  let accessToken: string | null = null;
+  let initError: string | null = null;
 
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-  const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
-  const DISCOVERY_DOC =
-    "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
-  const SCOPES = "https://www.googleapis.com/auth/calendar";
+
+  if (!CLIENT_ID) {
+    console.error("Missing VITE_GOOGLE_CLIENT_ID environment variable");
+    initError =
+      "Google Calendar integration is not configured. Please set VITE_GOOGLE_CLIENT_ID in your .env file.";
+  }
 
   selectedSubjects.subscribe((value) => (selectedSubjectsValue = value));
   schedule.subscribe((value) => (scheduleValue = value));
@@ -30,91 +33,148 @@
   selectedGroup.subscribe((value) => (selectedGroupValue = value));
 
   onMount(async () => {
-    // Load both libraries
-    const [gapiScript, gisScript] = await Promise.all([
-      loadScript("https://apis.google.com/js/api.js"),
-      loadScript("https://accounts.google.com/gsi/client"),
-    ]);
+    try {
+      // Load the GIS script
+      await loadScript("https://accounts.google.com/gsi/client");
 
-    if (gapiScript && gisScript) {
-      await initializeGapiClient();
+      // Wait for the google object to be available
+      await waitForGoogleObject();
+
+      // Initialize the client
       initializeGsiClient();
+    } catch (error) {
+      console.error("Error during Google Sign-In setup:", error);
     }
   });
 
-  function loadScript(src: string): Promise<boolean> {
-    return new Promise((resolve) => {
+  function loadScript(src: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) {
+        resolve();
+        return;
+      }
+
       const script = document.createElement("script");
       script.src = src;
       script.async = true;
       script.defer = true;
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
       document.body.appendChild(script);
     });
   }
 
-  async function initializeGapiClient() {
-    try {
-      await new Promise((resolve, reject) => {
-        (window as any).gapi.load("client", {
-          callback: resolve,
-          onerror: reject,
-        });
-      });
+  function waitForGoogleObject(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error("Timeout waiting for google object"));
+      }, 10000); // 10 second timeout
 
-      await (window as any).gapi.client.init({
-        apiKey: API_KEY,
-        discoveryDocs: [DISCOVERY_DOC],
-      });
+      const checkGoogle = () => {
+        if (typeof (window as any).google !== "undefined") {
+          clearTimeout(timeout);
+          resolve();
+        } else {
+          setTimeout(checkGoogle, 100);
+        }
+      };
 
-      gapiInited = true;
-    } catch (error) {
-      console.error("Error initializing GAPI client:", error);
-    }
+      checkGoogle();
+    });
   }
 
   function initializeGsiClient() {
+    if (!CLIENT_ID) {
+      console.error("Cannot initialize GSI client: Missing CLIENT_ID");
+      return;
+    }
+
+    if (!(window as any).google?.accounts?.oauth2) {
+      console.error("Google OAuth2 client not available");
+      return;
+    }
+
     try {
       tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
-        scope: SCOPES,
+        scope: "https://www.googleapis.com/auth/calendar",
         callback: handleTokenResponse,
       });
       gsiInited = true;
     } catch (error) {
       console.error("Error initializing GSI client:", error);
+      initError =
+        "Failed to initialize Google Calendar integration. Please try refreshing the page.";
     }
   }
 
   function handleTokenResponse(response: any) {
     if (response.access_token) {
+      accessToken = response.access_token;
       isSignedIn = true;
     }
   }
 
   async function handleAuthClick() {
-    if (!gapiInited || !gsiInited) {
+    if (!gsiInited) {
       console.error("Google API not initialized");
       return;
     }
 
     try {
       if (!isSignedIn) {
-        // Request an access token
         tokenClient.requestAccessToken();
       } else {
-        // Revoke the access token
-        const token = (window as any).gapi.client.getToken();
-        if (token) {
-          (window as any).google.accounts.oauth2.revoke(token.access_token);
-          (window as any).gapi.client.setToken(null);
-          isSignedIn = false;
+        if (accessToken) {
+          await fetch(
+            `https://oauth2.googleapis.com/revoke?token=${accessToken}`,
+            {
+              method: "POST",
+            }
+          );
         }
+        accessToken = null;
+        isSignedIn = false;
       }
     } catch (error) {
       console.error("Error during authentication:", error);
     }
+  }
+
+  async function makeCalendarRequest(
+    method: string,
+    endpoint: string,
+    data?: any
+  ) {
+    if (!accessToken) return null;
+
+    let url = `https://www.googleapis.com/calendar/v3/${endpoint}`;
+
+    // For GET requests, convert data to URL parameters
+    if (method === "GET" && data) {
+      const params = new URLSearchParams();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
+      url += `?${params.toString()}`;
+    }
+
+    const response = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      ...(method !== "GET" && data ? { body: JSON.stringify(data) } : {}),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Calendar API error: ${response.statusText}`);
+    }
+
+    return method === "DELETE" ? null : response.json();
   }
 
   function isSubjectForSelectedSemigroup(subject: Subject): boolean {
@@ -206,23 +266,24 @@
   }
 
   async function addToCalendar() {
-    if (!isSignedIn || isAddingEvents) return;
+    if (!isSignedIn || isAddingEvents || !accessToken) return;
 
     try {
       isAddingEvents = true;
 
-      // First, get existing events to prevent duplicates
-      const existingEvents = await (
-        window as any
-      ).gapi.client.calendar.events.list({
-        calendarId: "primary",
-        timeMin: new Date().toISOString(),
-        timeMax: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        singleEvents: false,
-      });
+      // Get existing events
+      const existingEvents = await makeCalendarRequest(
+        "GET",
+        "calendars/primary/events",
+        {
+          timeMin: new Date().toISOString(),
+          timeMax: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          singleEvents: false,
+        }
+      );
 
       const existingEventKeys = new Set(
-        existingEvents.result.items
+        existingEvents?.items
           ?.filter((event) => event.description?.startsWith("Professor:"))
           .map((event) => {
             const summary = event.summary;
@@ -232,7 +293,7 @@
           }) || []
       );
 
-      // Filter subjects based on both name and semigroup
+      // Filter subjects
       const selectedSchedule = scheduleValue.filter(
         (subject) =>
           selectedSubjectsValue.has(subject.name) &&
@@ -251,39 +312,23 @@
       for (const subject of selectedSchedule) {
         try {
           const event = createCalendarEvent(subject);
-
-          // Create a unique key for this event
           const eventKey = `${event.summary}-${getNextDayOccurrence(subject.day).getDay()}-${subject.time.split("-")[0]}`;
 
-          // Skip if this event already exists
           if (existingEventKeys.has(eventKey)) {
             console.log("Skipping duplicate event:", event);
             skippedCount++;
             continue;
           }
 
-          console.log("Adding event:", event);
-          const response = await (
-            window as any
-          ).gapi.client.calendar.events.insert({
-            calendarId: "primary",
-            resource: event,
-          });
-
-          if (response.status === 200) {
-            successCount++;
-            existingEventKeys.add(eventKey); // Add to tracking set
-          } else {
-            errorCount++;
-            console.error("Error response:", response);
-          }
+          await makeCalendarRequest("POST", "calendars/primary/events", event);
+          successCount++;
+          existingEventKeys.add(eventKey);
         } catch (err) {
+          console.error("Error adding event:", err);
           errorCount++;
-          console.error("Error adding event to calendar:", err);
         }
       }
 
-      // Show result to user
       alert(
         `Added ${successCount} events to calendar` +
           (skippedCount > 0
@@ -291,31 +336,29 @@
             : "") +
           (errorCount > 0 ? `\nFailed to add ${errorCount} events` : "")
       );
+    } catch (error) {
+      console.error("Error adding events:", error);
+      alert("Failed to add events to calendar. Please try again.");
     } finally {
       isAddingEvents = false;
     }
   }
 
   async function removeAppEvents() {
-    if (!isSignedIn) return;
+    if (!isSignedIn || !accessToken) return;
 
     try {
-      // Get events from primary calendar - just look for a week ahead since we use recurrence
-      const response = await (window as any).gapi.client.calendar.events.list({
-        calendarId: "primary",
-        timeMin: new Date().toISOString(),
-        timeMax: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days ahead
-        showDeleted: false,
-        singleEvents: false, // Get recurring events as single instances
-        maxResults: 2500,
-      });
+      const response = await makeCalendarRequest(
+        "GET",
+        "calendars/primary/events",
+        {
+          timeMin: new Date().toISOString(),
+          timeMax: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          singleEvents: false,
+        }
+      );
 
-      const events = response.result.items;
-      let deletedCount = 0;
-      let errorCount = 0;
-
-      // Filter events created by our app - look for our specific format
-      const appEvents = events.filter(
+      const appEvents = response.items?.filter(
         (event) =>
           event.description?.startsWith("Professor:") &&
           event.recurrence?.[0]?.startsWith("RRULE:FREQ=WEEKLY") &&
@@ -324,7 +367,7 @@
             event.summary?.includes("(Seminar)"))
       );
 
-      if (appEvents.length === 0) {
+      if (!appEvents?.length) {
         alert("No events found that were created by this app");
         return;
       }
@@ -334,12 +377,15 @@
       );
       if (!confirmed) return;
 
+      let deletedCount = 0;
+      let errorCount = 0;
+
       for (const event of appEvents) {
         try {
-          await (window as any).gapi.client.calendar.events.delete({
-            calendarId: "primary",
-            eventId: event.id,
-          });
+          await makeCalendarRequest(
+            "DELETE",
+            `calendars/primary/events/${event.id}`
+          );
           deletedCount++;
         } catch (err) {
           console.error("Error deleting event:", err);
@@ -351,14 +397,16 @@
         `Deleted ${deletedCount} recurring events${errorCount > 0 ? `. Failed to delete ${errorCount} events.` : ""}`
       );
     } catch (error) {
-      console.error("Error fetching events:", error);
-      alert("Failed to fetch events. Please try again.");
+      console.error("Error removing events:", error);
+      alert("Failed to remove events. Please try again.");
     }
   }
 </script>
 
 <div class="calendar-integration">
-  {#if !gapiInited || !gsiInited}
+  {#if initError}
+    <div class="error">{initError}</div>
+  {:else if !gsiInited}
     <div class="loading">Initializing Google Calendar...</div>
   {:else}
     <div class="buttons-container">
@@ -526,5 +574,14 @@
 
   button:not(:disabled):hover {
     opacity: 0.9;
+  }
+
+  .error {
+    color: #dc3545;
+    padding: 1rem;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 0.25rem;
+    margin-bottom: 1rem;
   }
 </style>
