@@ -8,7 +8,7 @@ const CORS_PROXIES = [
   "https://thingproxy.freeboard.io/fetch/",
 ];
 
-const BASE_URL = "https://www.cs.ubbcluj.ro/files/orar/2024-2/tabelar";
+const BASE_URL = "https://www.cs.ubbcluj.ro/files/orar/2025-1/tabelar";
 
 // Cache for responses
 const cache = new Map<string, any>();

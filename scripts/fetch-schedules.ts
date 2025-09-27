@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const CORS_PROXY = "https://corsproxy.io/?";
-const BASE_URL = "https://www.cs.ubbcluj.ro/files/orar/2024-2/tabelar";
+const BASE_URL = "https://www.cs.ubbcluj.ro/files/orar/2025-1/tabelar";
 
 // All possible timetable codes
 const TIMETABLE_CODES = [
