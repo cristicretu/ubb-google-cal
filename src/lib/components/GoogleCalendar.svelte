@@ -261,16 +261,17 @@
     if (frequency === "sapt. 1" || frequency === "sapt. 2") {
       // Calculate which week we're in since September 29th, 2025 (week 1)
       const weekOneStart = new Date("2025-09-29"); // September 29th, 2025 (Monday)
-      const currentDate = new Date();
 
-      // Calculate the difference in weeks
-      const timeDiff = currentDate.getTime() - weekOneStart.getTime();
+      // Calculate which week the next occurrence falls in
+      const timeDiff = nextOccurrence.getTime() - weekOneStart.getTime();
       const weeksDiff = Math.floor(timeDiff / (7 * 24 * 60 * 60 * 1000));
-      const currentWeekType = weeksDiff % 2 === 0 ? 1 : 2; // Week 1 or Week 2
+      const nextOccurrenceWeekType = weeksDiff % 2 === 0 ? 1 : 2; // Week 1 or Week 2
 
-      // If this subject is for a different week type than current, adjust the start date
+      // Determine what week type this subject should be in
       const subjectWeekType = frequency === "sapt. 1" ? 1 : 2;
-      if (currentWeekType !== subjectWeekType) {
+
+      // If the next occurrence is not in the correct week type, adjust it
+      if (nextOccurrenceWeekType !== subjectWeekType) {
         // Add a week to get to the correct week type
         nextOccurrence.setDate(nextOccurrence.getDate() + 7);
       }
