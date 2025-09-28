@@ -18,6 +18,9 @@
   let isAddingEvents = false;
   let accessToken: string | null = null;
   let initError: string | null = null;
+  let isLoadingFromStorage = false;
+  let previousGroupValue: string = "";
+  let previousSemigroupValue: "1" | "2" | null = undefined;
 
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -42,17 +45,14 @@
   // Create unique storage key based on group and semigroup
   $: storageKey = `ubb-cal-selections-${selectedGroupValue}-${selectedSemigroupValue || "common"}`;
 
-  // Save selections to localStorage whenever they change
-  $: if (selectedSubjectsValue && selectedGroupValue) {
+  // Save selections to localStorage whenever they change (but not when loading)
+  $: if (selectedSubjectsValue && selectedGroupValue && !isLoadingFromStorage) {
     saveSelectionsToStorage();
   }
 
-  // Load selections when group or semigroup changes
-  $: if (
-    selectedGroupValue !== undefined &&
-    selectedSemigroupValue !== undefined
-  ) {
-    loadSelectionsFromStorage();
+  // Handle group/semigroup changes
+  $: if (selectedGroupValue !== undefined && selectedSemigroupValue !== undefined) {
+    handleGroupOrSemigroupChange();
   }
 
   onMount(async () => {
@@ -66,8 +66,10 @@
       // Initialize the client
       initializeGsiClient();
 
-      // Load saved selections after a short delay to ensure stores are initialized
+      // Initialize tracking variables and load saved selections after a short delay
       setTimeout(() => {
+        previousGroupValue = selectedGroupValue;
+        previousSemigroupValue = selectedSemigroupValue;
         if (selectedGroupValue && selectedSemigroupValue !== undefined) {
           loadSelectionsFromStorage();
         }
@@ -374,9 +376,37 @@
     }
   }
 
+  function handleGroupOrSemigroupChange() {
+    // Check if group or semigroup actually changed
+    const groupChanged = previousGroupValue !== selectedGroupValue;
+    const semigroupChanged = previousSemigroupValue !== selectedSemigroupValue;
+    
+    if (groupChanged || semigroupChanged) {
+      // Save current selections to the previous storage key before switching
+      if (previousGroupValue && !isLoadingFromStorage) {
+        const previousStorageKey = `ubb-cal-selections-${previousGroupValue}-${previousSemigroupValue || "common"}`;
+        try {
+          if (typeof window !== "undefined" && selectedSubjectsValue.size > 0) {
+            const selectionsArray = Array.from(selectedSubjectsValue);
+            localStorage.setItem(previousStorageKey, JSON.stringify(selectionsArray));
+          }
+        } catch (error) {
+          console.warn("Failed to save previous selections:", error);
+        }
+      }
+      
+      // Update tracking variables
+      previousGroupValue = selectedGroupValue;
+      previousSemigroupValue = selectedSemigroupValue;
+      
+      // Load selections for the new group/semigroup combination
+      loadSelectionsFromStorage();
+    }
+  }
+
   function saveSelectionsToStorage() {
     try {
-      if (typeof window !== "undefined" && storageKey) {
+      if (typeof window !== "undefined" && storageKey && selectedSubjectsValue.size > 0) {
         const selectionsArray = Array.from(selectedSubjectsValue);
         localStorage.setItem(storageKey, JSON.stringify(selectionsArray));
       }
@@ -388,6 +418,7 @@
   function loadSelectionsFromStorage() {
     try {
       if (typeof window !== "undefined" && storageKey) {
+        isLoadingFromStorage = true;
         const savedSelections = localStorage.getItem(storageKey);
         if (savedSelections) {
           const selectionsArray: string[] = JSON.parse(savedSelections);
@@ -397,10 +428,15 @@
           if (!setsEqual(selectedSubjectsValue, selectionsSet)) {
             selectedSubjects.set(selectionsSet);
           }
+        } else {
+          // No saved selections for this group/semigroup, clear current selections
+          selectedSubjects.set(new Set<string>());
         }
+        isLoadingFromStorage = false;
       }
     } catch (error) {
       console.warn("Failed to load selections from localStorage:", error);
+      isLoadingFromStorage = false;
     }
   }
 
