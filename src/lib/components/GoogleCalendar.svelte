@@ -51,7 +51,10 @@
   }
 
   // Handle group/semigroup changes
-  $: if (selectedGroupValue !== undefined && selectedSemigroupValue !== undefined) {
+  $: if (
+    selectedGroupValue !== undefined &&
+    selectedSemigroupValue !== undefined
+  ) {
     handleGroupOrSemigroupChange();
   }
 
@@ -213,7 +216,8 @@
     // First check if this subject belongs to our group
     if (
       !subject.group.startsWith(selectedGroupValue) &&
-      !subject.group.startsWith("IE2")
+      !subject.group.startsWith("IE2") &&
+      !subject.group.startsWith("IE3")
     ) {
       return false;
     }
@@ -223,12 +227,20 @@
       return !subject.group.includes("/");
     }
 
+    // Handle IE3 subjects - for laborator and seminar, include them for both semigroups
+    if (
+      subject.group === "IE3" &&
+      (subject.type === "Laborator" || subject.type === "Seminar")
+    ) {
+      return true;
+    }
+
     // Return subjects that either:
-    // 1. Don't have a specific semigroup (e.g., "923" or "IE2")
+    // 1. Don't have a specific semigroup (e.g., "923", "IE2", "IE3")
     // 2. Match the selected semigroup (e.g., "923/1" for semigroup "1")
     const groupParts = subject.group.split("/");
 
-    // Common classes (like "IE2" or "923") are always included
+    // Common classes (like "IE2", "IE3", or "923") are always included
     if (groupParts.length === 1) {
       return true;
     }
@@ -240,7 +252,31 @@
   function createCalendarEvent(subject: Subject): ScheduleEvent {
     // Parse hours correctly (assuming format like "8-10" or "14-16")
     const [startHour, endHour] = subject.time.split("-");
-    const nextOccurrence = getNextDayOccurrence(subject.day);
+
+    // Handle frequency and calculate correct start date
+    let nextOccurrence = getNextDayOccurrence(subject.day);
+
+    // Clean up frequency field (remove &nbsp; and other HTML entities)
+    const frequency = subject.frequency?.replace(/&nbsp;/g, "").trim();
+
+    if (frequency === "sapt. 1" || frequency === "sapt. 2") {
+      // Calculate which week we're in since September 29th, 2025 (week 1)
+      const weekOneStart = new Date("2025-09-29"); // September 29th, 2025 (Monday)
+      const currentDate = new Date();
+
+      // Calculate the difference in weeks
+      const timeDiff = currentDate.getTime() - weekOneStart.getTime();
+      const weeksDiff = Math.floor(timeDiff / (7 * 24 * 60 * 60 * 1000));
+      const currentWeekType = weeksDiff % 2 === 0 ? 1 : 2; // Week 1 or Week 2
+
+      // If this subject is for a different week type than current, adjust the start date
+      const subjectWeekType = frequency === "sapt. 1" ? 1 : 2;
+      if (currentWeekType !== subjectWeekType) {
+        // Add a week to get to the correct week type
+        nextOccurrence.setDate(nextOccurrence.getDate() + 7);
+      }
+    }
+
     const dateStr = nextOccurrence.toISOString().split("T")[0];
 
     // Ensure hours are properly padded with leading zeros
@@ -250,7 +286,7 @@
     const event: ScheduleEvent = {
       summary: `${subject.name} (${subject.type})`,
       location: subject.room,
-      description: `Professor: ${subject.professor}\nGroup: ${subject.group}`,
+      description: `Professor: ${subject.professor}\nGroup: ${subject.group}${frequency ? `\nFrequency: ${frequency}` : ""}`,
       start: {
         dateTime: `${dateStr}T${formattedStartHour}:00:00`,
         timeZone: "Europe/Bucharest",
@@ -262,12 +298,9 @@
     };
 
     // Handle bi-weekly recurrence
-    if (subject.frequency) {
-      const interval = subject.frequency === "sapt. 1" ? 2 : 2;
-      const weekStart = subject.frequency === "sapt. 1" ? "" : ";WKST=MO";
-      event.recurrence = [
-        `RRULE:FREQ=WEEKLY;COUNT=14;INTERVAL=${interval}${weekStart}`,
-      ];
+    if (frequency === "sapt. 1" || frequency === "sapt. 2") {
+      // Bi-weekly recurrence (every 2 weeks)
+      event.recurrence = ["RRULE:FREQ=WEEKLY;COUNT=7;INTERVAL=2"];
     } else {
       // Regular weekly recurrence
       event.recurrence = ["RRULE:FREQ=WEEKLY;COUNT=14"];
@@ -380,7 +413,7 @@
     // Check if group or semigroup actually changed
     const groupChanged = previousGroupValue !== selectedGroupValue;
     const semigroupChanged = previousSemigroupValue !== selectedSemigroupValue;
-    
+
     if (groupChanged || semigroupChanged) {
       // Save current selections to the previous storage key before switching
       if (previousGroupValue && !isLoadingFromStorage) {
@@ -388,17 +421,20 @@
         try {
           if (typeof window !== "undefined" && selectedSubjectsValue.size > 0) {
             const selectionsArray = Array.from(selectedSubjectsValue);
-            localStorage.setItem(previousStorageKey, JSON.stringify(selectionsArray));
+            localStorage.setItem(
+              previousStorageKey,
+              JSON.stringify(selectionsArray),
+            );
           }
         } catch (error) {
           console.warn("Failed to save previous selections:", error);
         }
       }
-      
+
       // Update tracking variables
       previousGroupValue = selectedGroupValue;
       previousSemigroupValue = selectedSemigroupValue;
-      
+
       // Load selections for the new group/semigroup combination
       loadSelectionsFromStorage();
     }
@@ -406,7 +442,11 @@
 
   function saveSelectionsToStorage() {
     try {
-      if (typeof window !== "undefined" && storageKey && selectedSubjectsValue.size > 0) {
+      if (
+        typeof window !== "undefined" &&
+        storageKey &&
+        selectedSubjectsValue.size > 0
+      ) {
         const selectionsArray = Array.from(selectedSubjectsValue);
         localStorage.setItem(storageKey, JSON.stringify(selectionsArray));
       }
@@ -601,9 +641,11 @@
                     <div class="schedule-info">
                       <div class="schedule-day">{subject.day}</div>
                       <div class="schedule-time">{subject.time}</div>
-                      {#if subject.frequency}
+                      {#if subject.frequency && subject.frequency
+                          .replace(/&nbsp;/g, "")
+                          .trim()}
                         <div class="schedule-frequency">
-                          {subject.frequency}
+                          {subject.frequency.replace(/&nbsp;/g, "").trim()}
                         </div>
                       {/if}
                     </div>
