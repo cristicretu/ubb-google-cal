@@ -32,6 +32,29 @@
   selectedSemigroup.subscribe((value) => (selectedSemigroupValue = value));
   selectedGroup.subscribe((value) => (selectedGroupValue = value));
 
+  // Reactive statement to compute selected subjects for preview
+  $: selectedSchedulePreview = scheduleValue.filter(
+    (subject) =>
+      selectedSubjectsValue.has(subject.name) &&
+      isSubjectForSelectedSemigroup(subject),
+  );
+
+  // Create unique storage key based on group and semigroup
+  $: storageKey = `ubb-cal-selections-${selectedGroupValue}-${selectedSemigroupValue || "common"}`;
+
+  // Save selections to localStorage whenever they change
+  $: if (selectedSubjectsValue && selectedGroupValue) {
+    saveSelectionsToStorage();
+  }
+
+  // Load selections when group or semigroup changes
+  $: if (
+    selectedGroupValue !== undefined &&
+    selectedSemigroupValue !== undefined
+  ) {
+    loadSelectionsFromStorage();
+  }
+
   onMount(async () => {
     try {
       // Load the GIS script
@@ -42,6 +65,13 @@
 
       // Initialize the client
       initializeGsiClient();
+
+      // Load saved selections after a short delay to ensure stores are initialized
+      setTimeout(() => {
+        if (selectedGroupValue && selectedSemigroupValue !== undefined) {
+          loadSelectionsFromStorage();
+        }
+      }, 100);
     } catch (error) {
       console.error("Error during Google Sign-In setup:", error);
     }
@@ -130,7 +160,7 @@
             `https://oauth2.googleapis.com/revoke?token=${accessToken}`,
             {
               method: "POST",
-            }
+            },
           );
         }
         accessToken = null;
@@ -144,7 +174,7 @@
   async function makeCalendarRequest(
     method: string,
     endpoint: string,
-    data?: any
+    data?: any,
   ) {
     if (!accessToken) return null;
 
@@ -260,7 +290,7 @@
 
     today.setDate(
       today.getDate() +
-        (daysUntilTarget <= 0 ? daysUntilTarget + 7 : daysUntilTarget)
+        (daysUntilTarget <= 0 ? daysUntilTarget + 7 : daysUntilTarget),
     );
     return today;
   }
@@ -279,7 +309,7 @@
           timeMin: new Date().toISOString(),
           timeMax: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           singleEvents: false,
-        }
+        },
       );
 
       const existingEventKeys = new Set(
@@ -290,14 +320,14 @@
             const time = event.start.dateTime.split("T")[1].substring(0, 5);
             const day = new Date(event.start.dateTime).getDay();
             return `${summary}-${day}-${time}`;
-          }) || []
+          }) || [],
       );
 
       // Filter subjects
       const selectedSchedule = scheduleValue.filter(
         (subject) =>
           selectedSubjectsValue.has(subject.name) &&
-          isSubjectForSelectedSemigroup(subject)
+          isSubjectForSelectedSemigroup(subject),
       );
 
       if (selectedSchedule.length === 0) {
@@ -334,13 +364,72 @@
           (skippedCount > 0
             ? `\nSkipped ${skippedCount} existing events`
             : "") +
-          (errorCount > 0 ? `\nFailed to add ${errorCount} events` : "")
+          (errorCount > 0 ? `\nFailed to add ${errorCount} events` : ""),
       );
     } catch (error) {
       console.error("Error adding events:", error);
       alert("Failed to add events to calendar. Please try again.");
     } finally {
       isAddingEvents = false;
+    }
+  }
+
+  function saveSelectionsToStorage() {
+    try {
+      if (typeof window !== "undefined" && storageKey) {
+        const selectionsArray = Array.from(selectedSubjectsValue);
+        localStorage.setItem(storageKey, JSON.stringify(selectionsArray));
+      }
+    } catch (error) {
+      console.warn("Failed to save selections to localStorage:", error);
+    }
+  }
+
+  function loadSelectionsFromStorage() {
+    try {
+      if (typeof window !== "undefined" && storageKey) {
+        const savedSelections = localStorage.getItem(storageKey);
+        if (savedSelections) {
+          const selectionsArray: string[] = JSON.parse(savedSelections);
+          const selectionsSet = new Set<string>(selectionsArray);
+
+          // Only update if the current selections are different
+          if (!setsEqual(selectedSubjectsValue, selectionsSet)) {
+            selectedSubjects.set(selectionsSet);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to load selections from localStorage:", error);
+    }
+  }
+
+  function setsEqual(set1: Set<string>, set2: Set<string>): boolean {
+    if (set1.size !== set2.size) return false;
+    for (const item of set1) {
+      if (!set2.has(item)) return false;
+    }
+    return true;
+  }
+
+  function clearStorageForGroup() {
+    try {
+      if (typeof window !== "undefined") {
+        // Clear any existing storage keys for this group
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (
+            key &&
+            key.startsWith(`ubb-cal-selections-${selectedGroupValue}-`)
+          ) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((key) => localStorage.removeItem(key));
+      }
+    } catch (error) {
+      console.warn("Failed to clear storage:", error);
     }
   }
 
@@ -355,7 +444,7 @@
           timeMin: new Date().toISOString(),
           timeMax: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           singleEvents: false,
-        }
+        },
       );
 
       const appEvents = response.items?.filter(
@@ -364,7 +453,7 @@
           event.recurrence?.[0]?.startsWith("RRULE:FREQ=WEEKLY") &&
           (event.summary?.includes("(Curs)") ||
             event.summary?.includes("(Laborator)") ||
-            event.summary?.includes("(Seminar)"))
+            event.summary?.includes("(Seminar)")),
       );
 
       if (!appEvents?.length) {
@@ -373,7 +462,7 @@
       }
 
       const confirmed = confirm(
-        `Found ${appEvents.length} recurring events created by this app. Delete them?`
+        `Found ${appEvents.length} recurring events created by this app. Delete them?`,
       );
       if (!confirmed) return;
 
@@ -384,7 +473,7 @@
         try {
           await makeCalendarRequest(
             "DELETE",
-            `calendars/primary/events/${event.id}`
+            `calendars/primary/events/${event.id}`,
           );
           deletedCount++;
         } catch (err) {
@@ -394,7 +483,7 @@
       }
 
       alert(
-        `Deleted ${deletedCount} recurring events${errorCount > 0 ? `. Failed to delete ${errorCount} events.` : ""}`
+        `Deleted ${deletedCount} recurring events${errorCount > 0 ? `. Failed to delete ${errorCount} events.` : ""}`,
       );
     } catch (error) {
       console.error("Error removing events:", error);
@@ -457,18 +546,67 @@
         </div>
 
         {#if selectedSemigroupValue !== undefined}
+          <!-- Preview Section -->
+          {#if selectedSchedulePreview.length > 0}
+            <div class="section">
+              <h3>2. Selected subjects preview:</h3>
+              <div class="preview-container">
+                {#each selectedSchedulePreview as subject}
+                  <div class="preview-item">
+                    <div class="subject-info">
+                      <div class="subject-name">{subject.name}</div>
+                      <div class="subject-details">
+                        <span class="subject-type">{subject.type}</span>
+                        <span class="subject-professor"
+                          >Prof. {subject.professor}</span
+                        >
+                      </div>
+                    </div>
+                    <div class="schedule-info">
+                      <div class="schedule-day">{subject.day}</div>
+                      <div class="schedule-time">{subject.time}</div>
+                      {#if subject.frequency}
+                        <div class="schedule-frequency">
+                          {subject.frequency}
+                        </div>
+                      {/if}
+                    </div>
+                    <div class="location-info">
+                      <div class="subject-room">{subject.room}</div>
+                      <div class="subject-group">{subject.group}</div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
           <div class="section">
-            <h3>2. Select subjects and add to calendar:</h3>
+            <h3>
+              {selectedSchedulePreview.length > 0 ? "3." : "2."} Add to calendar:
+            </h3>
             {#if selectedSubjectsValue.size > 0}
-              <button
-                class="add-button"
-                on:click={addToCalendar}
-                disabled={isAddingEvents}
-              >
-                {isAddingEvents
-                  ? "Adding events..."
-                  : "Add Selected Subjects to Calendar"}
-              </button>
+              <div class="calendar-actions">
+                <button
+                  class="add-button"
+                  on:click={addToCalendar}
+                  disabled={isAddingEvents}
+                >
+                  {isAddingEvents
+                    ? "Adding events..."
+                    : `Add ${selectedSchedulePreview.length} Subject${selectedSchedulePreview.length !== 1 ? "s" : ""} to Calendar`}
+                </button>
+                <button
+                  class="clear-selections-button"
+                  on:click={() => {
+                    selectedSubjects.set(new Set());
+                    clearStorageForGroup();
+                  }}
+                  title="Clear all selections for this group/semigroup"
+                >
+                  Clear Selections
+                </button>
+              </div>
             {:else}
               <div class="info-text">Please select some subjects first</div>
             {/if}
@@ -572,6 +710,19 @@
     color: white;
   }
 
+  .clear-selections-button {
+    background-color: #6c757d;
+    color: white;
+    font-size: 0.9rem;
+  }
+
+  .calendar-actions {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
   button:not(:disabled):hover {
     opacity: 0.9;
   }
@@ -583,5 +734,122 @@
     border: 1px solid #f5c6cb;
     border-radius: 0.25rem;
     margin-bottom: 1rem;
+  }
+
+  .preview-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 0.5rem;
+    background-color: white;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+  }
+
+  .preview-item {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 1rem;
+    padding: 0.75rem;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 0.25rem;
+    align-items: center;
+  }
+
+  .subject-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .subject-name {
+    font-weight: 600;
+    color: #212529;
+    font-size: 0.95rem;
+  }
+
+  .subject-details {
+    display: flex;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    color: #6c757d;
+  }
+
+  .subject-type {
+    background-color: #e7f3ff;
+    color: #0056b3;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-weight: 500;
+  }
+
+  .subject-professor {
+    font-style: italic;
+  }
+
+  .schedule-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: center;
+  }
+
+  .schedule-day {
+    font-weight: 600;
+    color: #495057;
+    font-size: 0.9rem;
+  }
+
+  .schedule-time {
+    font-weight: 700;
+    color: #28a745;
+    font-size: 1rem;
+  }
+
+  .schedule-frequency {
+    font-size: 0.75rem;
+    color: #6c757d;
+    font-style: italic;
+  }
+
+  .location-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    text-align: right;
+  }
+
+  .subject-room {
+    font-weight: 600;
+    color: #495057;
+    font-size: 0.9rem;
+  }
+
+  .subject-group {
+    font-size: 0.8rem;
+    color: #6c757d;
+    background-color: #e9ecef;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    align-self: flex-end;
+  }
+
+  @media (max-width: 768px) {
+    .preview-item {
+      grid-template-columns: 1fr;
+      gap: 0.5rem;
+    }
+
+    .schedule-info,
+    .location-info {
+      text-align: left;
+    }
+
+    .subject-group {
+      align-self: flex-start;
+    }
   }
 </style>
