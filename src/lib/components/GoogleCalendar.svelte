@@ -213,11 +213,18 @@
   }
 
   function isSubjectForSelectedSemigroup(subject: Subject): boolean {
-    // First check if this subject belongs to our group
+    // Handle IE3 subjects first - ONLY for laborator and seminar, include them for both semigroups
+    if (
+      subject.group === "IE3" &&
+      (subject.type === "Laborator" || subject.type === "Seminar")
+    ) {
+      return true;
+    }
+
+    // First check if this subject belongs to our group (excluding IE3 since we handled it above)
     if (
       !subject.group.startsWith(selectedGroupValue) &&
-      !subject.group.startsWith("IE2") &&
-      !subject.group.startsWith("IE3")
+      !subject.group.startsWith("IE2")
     ) {
       return false;
     }
@@ -227,20 +234,12 @@
       return !subject.group.includes("/");
     }
 
-    // Handle IE3 subjects - for laborator and seminar, include them for both semigroups
-    if (
-      subject.group === "IE3" &&
-      (subject.type === "Laborator" || subject.type === "Seminar")
-    ) {
-      return true;
-    }
-
     // Return subjects that either:
-    // 1. Don't have a specific semigroup (e.g., "923", "IE2", "IE3")
+    // 1. Don't have a specific semigroup (e.g., "923", "IE2")
     // 2. Match the selected semigroup (e.g., "923/1" for semigroup "1")
     const groupParts = subject.group.split("/");
 
-    // Common classes (like "IE2", "IE3", or "923") are always included
+    // Common classes (like "IE2" or "923") are always included
     if (groupParts.length === 1) {
       return true;
     }
