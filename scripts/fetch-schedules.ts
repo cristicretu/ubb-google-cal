@@ -6,8 +6,7 @@ import fetch from "node-fetch";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const CORS_PROXY = "https://corsproxy.io/?";
-const BASE_URL = "https://www.cs.ubbcluj.ro/files/orar/2025-1/tabelar";
+const BASE_URL = "https://www.cs.ubbcluj.ro/files/orar/2025-2/tabelar";
 
 // All possible timetable codes
 const TIMETABLE_CODES = [
@@ -57,9 +56,7 @@ const TIMETABLE_CODES = [
 
 async function fetchSchedule(code: string) {
   try {
-    const response = await fetch(
-      CORS_PROXY + encodeURIComponent(`${BASE_URL}/${code}.html`)
-    );
+    const response = await fetch(`${BASE_URL}/${code}.html`);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }

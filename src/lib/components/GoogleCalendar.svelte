@@ -260,7 +260,7 @@
 
     if (frequency === "sapt. 1" || frequency === "sapt. 2") {
       // Calculate which week we're in since September 29th, 2025 (week 1)
-      const weekOneStart = new Date("2025-09-29"); // September 29th, 2025 (Monday)
+      const weekOneStart = new Date("2026-02-23"); // September 29th, 2025 (Monday)
 
       // Calculate which week the next occurrence falls in
       const timeDiff = nextOccurrence.getTime() - weekOneStart.getTime();
