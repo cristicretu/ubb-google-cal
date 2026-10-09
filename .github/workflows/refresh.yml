@@ -1,0 +1,30 @@
+# Re-reads the faculty timetables every morning and commits only if something changed.
+# The commit triggers a normal static redeploy; no serverless functions involved.
+name: refresh timetables
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm data
+      - run: pnpm test
+      - name: commit if changed
+        run: |
+          git add -A public
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898+github-actions[bot]@users.noreply.github.com"
+          git commit -m "timetable update $(date -u +%F)"
+          git push

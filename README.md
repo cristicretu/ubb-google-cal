@@ -1,92 +1,41 @@
+# ubb schedule
 
-https://github.com/user-attachments/assets/051643bb-2bfb-447c-a6bd-28f5a7d949d3
+Your UBB Cluj (Mate-Info) timetable in Google Calendar, Apple Calendar or Outlook.
 
-<hr></hr>
+**[ubb-schedule.vercel.app](https://ubb-schedule.vercel.app)**
 
-###  Visit [ubb-schedule.vercel.app/?timetable=IE2](https://ubb-schedule.vercel.app/?timetable=IE2) and replace the query param with whatever class you're in (MI1, IA1, etc.)
+Pick your program, group and semigroup, then subscribe. The calendar follows the faculty timetable: a GitHub Action re-reads [cs.ubbcluj.ro/files/orar](https://www.cs.ubbcluj.ro/files/orar/) every morning and commits only when something changed.
 
-## UBB Schedule Manager
+- every program on the faculty site, bachelor and master
+- odd/even weeks counted like the faculty does: week 1 is the first teaching Monday, numbering continues after the Christmas break
+- breaks and public holidays left out
+- uncheck classes you don't attend and download a `.ics` with only the rest
 
+## How it works
 
-A Svelte application that helps UBB students manage their class schedule by integrating with Google Calendar.
+It's a static site. No server, no Google sign-in.
 
-## Features
-
-- Select your student group
-- Choose which subjects to add to your calendar
-- Automatically creates recurring calendar events
-- Handles bi-weekly (odd/even week) schedules
-- Easy Google Calendar integration
-
-## Prerequisites
-
-Before you can use this application, you'll need:
-
-1. Node.js (v14 or higher)
-2. A Google Cloud Platform account
-3. A Google Calendar API key and Client ID
-
-## Setup
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd ubb-schedule-manager
+```
+scripts/build-data.ts   scrape every timetable -> public/data/*.json + public/cal/<program>/<group>[-<semigroup>].ics
+src/lib/timetable.ts    parser (pages are ISO-8859-2)
+src/lib/calendar.ts     semester dates, week parity, .ics writer
+src/App.svelte          the page
+scripts/test.ts         calendar math + checks every generated .ics
 ```
 
-2. Install dependencies:
-```bash
-pnpm install
-```
+Old links like `?timetable=IE3` still work.
 
-3. Create a Google Cloud Platform project and enable the Google Calendar API:
-   - Go to the [Google Cloud Console](https://console.cloud.google.com)
-   - Create a new project
-   - Enable the Google Calendar API
-   - Create OAuth 2.0 credentials (Client ID and API Key)
-   - Add your domain to the authorized JavaScript origins
+## New semester
 
-4. Configure the application:
-   - Open `src/lib/components/GoogleCalendar.svelte`
-   - Replace the empty CLIENT_ID and API_KEY constants with your credentials:
-   ```typescript
-   const VITE_GOOGLE_CLIENT_ID = 'your-client-id.apps.googleusercontent.com';
-   ```
+Add its dates to `SEMESTERS` in `src/lib/calendar.ts` from the faculty's [structura anului universitar](https://www.cs.ubbcluj.ro/invatamant/structura-anului-universitar/). Until you do, `pnpm data` refuses to run, so stale weeks never ship.
 
-5. Start the development server:
-```bash
+## Run it
+
+```sh
+pnpm i
+pnpm data    # scrape
+pnpm test
 pnpm dev
 ```
-
-## Usage
-
-1. Open the application in your browser
-2. Select your group from the dropdown menu
-3. Choose which subjects you want to add to your calendar
-4. Click "Sign in with Google" to authenticate
-5. Click "Add Selected Subjects to Calendar" to create the events
-
-## Development
-
-The application is built with:
-- Svelte
-- TypeScript
-- Google Calendar API
-
-Key files:
-- `src/App.svelte` - Main application component
-- `src/lib/components/` - UI components
-- `src/lib/stores.ts` - Svelte stores and schedule data
-- `src/lib/types.ts` - TypeScript interfaces
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
-
-## License
 
 MIT

@@ -1,12 +1,16 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-
 :root {
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+  --bg: #fff; --fg: #111; --dim: #777; --line: #e3e3e3; --hi: #0645ad; --bad: #b00020;
+  color-scheme: light dark;
 }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0a0a0a; --fg: #e6e6e6; --dim: #808080; --line: #262626; --hi: #7fb2ff; --bad: #ff6b6b; }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 14px/1.55 ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+a { color: var(--hi); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--hi); outline-offset: 2px; }
