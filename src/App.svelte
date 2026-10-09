@@ -255,7 +255,8 @@
   <footer class="dim">
     data: <a href={`https://www.cs.ubbcluj.ro/files/orar/${sem}/tabelar/index.html`}>cs.ubbcluj.ro</a>, refreshed daily ·
     <a href="https://github.com/cristicretu/ubb-google-cal">source</a> ·
-    <a href="https://cristicretu.github.io/ubb">more ubb stuff</a>
+    <a href="https://cristicretu.github.io/ubb">labs &amp; exams for every course</a> ·
+    <a href="https://cn-exam-sand.vercel.app">networks exam practice</a>
   </footer>
 </main>
 
