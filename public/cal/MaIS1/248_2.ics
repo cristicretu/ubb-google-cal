@@ -113,7 +113,7 @@ RRULE:FREQ=WEEKLY;INTERVAL=2;UNTIL=20270108T235959Z
 EXDATE;TZID=Europe/Bucharest:20261225T120000
 SUMMARY:Etica si integritate academica. Metodologia cercetarii stiintifice 
  (Seminar)
-LOCATION:5/I
+LOCATION:9/I
 DESCRIPTION:Conf. AVRAM Sanda\n248/2\nweek 1\, 3\, 5...
 END:VEVENT
 BEGIN:VEVENT
